@@ -36,6 +36,6 @@ add_flex_bison_dependency(Scanner Parser)
 
 add_executable(
     mcc
-    main.cpp Nodes.cpp ${BISON_Parser_OUTPUTS} ${FLEX_Scanner_OUTPUTS}
+    main.cpp Nodes.cpp ProgramOptions.cpp ${BISON_Parser_OUTPUTS} ${FLEX_Scanner_OUTPUTS}
 )
 
