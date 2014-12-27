@@ -32,7 +32,11 @@ LDFLAGS = $(LLVM_LIB_PATH) $(shell llvm-config-3.4 --libs) \
 compile:
 	/usr/local/opt/bison/bin/bison Monicelli.ypp
 	flex Monicelli.lpp
-	~/bin/clang++ $(CXXFLAGS) $(DEFINITIONS) Parser.cpp lex.yy.cc Nodes.cpp main.cpp -o mcc $(LDFLAGS)
+	~/bin/clang++ $(CXXFLAGS) $(DEFINITIONS) ProgramOptions.cpp Parser.cpp lex.yy.cc Nodes.cpp main.cpp -o mcc $(LDFLAGS)
+
+	$(CXX) \
+    -Wall -Wno-deprecated-register -std=c++0x -DYYDEBUG=0 -O2 \
+    Parser.cpp lex.yy.cc Nodes.cpp main.cpp ProgramOptions.cpp -o mcc
 
 patch2:
 	# Bison 2 compatibility patch
