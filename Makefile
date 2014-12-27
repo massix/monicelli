@@ -17,16 +17,22 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-default: compile cleanautogen
+default: compile
 
 bison2: patch2 default unpatch2
+LLVM_PATH	= $(shell llvm-config-3.4 --cxxflags)
+LLVM_LIB_PATH = $(shell llvm-config-3.4 --ldflags)
+CXXFLAGS	= -Wall -Wno-deprecated-register -std=c++11 -DYYDEBUG=0 -O2 $(LLVM_PATH) -fexceptions -I/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include
+DEFINITIONS = -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS
+LDFLAGS = $(LLVM_LIB_PATH) $(shell llvm-config-3.4 --libs) \
+	 		-lclangAnalysis -lclangAST -lclangBasic -lclangCodeGen -lclangDriver \
+			-lclangEdit -lclangFrontend -lclangLex -lclangParse -lclangRewriteCore \
+			-lclangRewriteFrontend -lclangSema -lclangSerialization -lclangTooling
 
 compile:
-	bison Monicelli.ypp
+	/usr/local/opt/bison/bin/bison Monicelli.ypp
 	flex Monicelli.lpp
-	$(CXX) \
-    -Wall -Wno-deprecated-register -std=c++0x -DYYDEBUG=0 -O2 \
-    Parser.cpp lex.yy.cc Nodes.cpp main.cpp -o mcc
+	~/bin/clang++ $(CXXFLAGS) $(DEFINITIONS) Parser.cpp lex.yy.cc Nodes.cpp main.cpp -o mcc $(LDFLAGS)
 
 patch2:
 	# Bison 2 compatibility patch

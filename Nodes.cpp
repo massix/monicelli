@@ -223,6 +223,8 @@ void Main::emit(std::ostream &stream, int indent) {
 }
 
 void Program::emit(std::ostream &stream, int indent) {
+    stream << "#include <cstdarg>\n";
+    stream << "#include <cstdio>\n";
     stream << "#include <iostream>\n";
     stream << "#include <cassert>\n";
     stream << "#include <cstdlib>\n\n";
