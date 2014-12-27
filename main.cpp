@@ -26,12 +26,15 @@
 #include <stdint.h>
 #include <vector>
 #include <string>
+
+#ifdef LLVM_ENABLED
 #include <llvm/Support/Path.h>
 #include <llvm/Support/Program.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Support/Host.h>
 #include <llvm/ADT/IntrusiveRefCntPtr.h>
 #include <llvm/ADT/SmallVector.h>
+#include <llvm/LinkAllPasses.h>
 #include <clang/Basic/DiagnosticOptions.h>
 #include <clang/Basic/Diagnostic.h>
 #include <clang/Basic/DiagnosticIDs.h>
@@ -41,10 +44,43 @@
 #include <clang/Driver/Driver.h>
 #include <clang/Driver/DriverDiagnostic.h>
 
+#include <clang/Frontend/CompilerInstance.h>
 #include <clang/Frontend/TextDiagnosticPrinter.h>
 
-#define OUTPUT_PATH "Intermediary.cpp"
+#include <clang/Driver/DriverDiagnostic.h>
+#include <clang/Driver/Options.h>
+#include <clang/Frontend/CompilerInstance.h>
+#include <clang/Frontend/CompilerInvocation.h>
+#include <clang/Frontend/FrontendDiagnostic.h>
+#include <clang/Frontend/TextDiagnosticBuffer.h>
+#include <clang/Frontend/TextDiagnosticPrinter.h>
+#include <clang/Frontend/Utils.h>
+#include <clang/FrontendTool/Utils.h>
+#include <llvm/ADT/Statistic.h>
+#include <llvm/LinkAllPasses.h>
+#include <llvm/Option/ArgList.h>
+#include <llvm/Option/OptTable.h>
+#include <llvm/Support/ErrorHandling.h>
+#include <llvm/Support/ManagedStatic.h>
+#include <llvm/Support/Signals.h>
+#include <llvm/Support/TargetSelect.h>
+#include <llvm/Support/Timer.h>
+#include <llvm/Support/raw_ostream.h>
+
+
+#define OUTPUT_PATH "Intermediate.cpp"
 #define OUT_FILE "a.out"
+
+
+static void LLVMErrorHandler(void *data, const std::string & message, bool generateCrash) {
+    fprintf(stderr, "FATAL: %s\n", message.c_str());
+    llvm::sys::RunInterruptHandlers();
+
+    // We cannot recover from llvm errors.
+    exit(-1);
+}
+
+#endif
 
 using namespace monicelli;
 
@@ -75,7 +111,6 @@ int main(int argc, char **argv) {
 
     Scanner scanner(dynamic_cast<std::istream &>(input));
     Parser parser(scanner, program);
-    std::ofstream intermediaryFile(OUTPUT_PATH);
 
 #if YYDEBUG
     parser.set_debug_level(1);
@@ -83,33 +118,69 @@ int main(int argc, char **argv) {
 
     parser.parse();
 
+#ifdef LLVM_ENABLED
+    std::ofstream intermediaryFile(OUTPUT_PATH);
     program.emit(dynamic_cast<std::ostream &>(intermediaryFile));
     intermediaryFile.close();
 
-    // Try to compile directly to an executable.
-    std::string outputPath(OUTPUT_PATH);
-    std::string clangPath = llvm::sys::FindProgramByName("clang");
+    std::unique_ptr<clang::CompilerInstance> compiler(new clang::CompilerInstance());
+    clang::IntrusiveRefCntPtr<clang::DiagnosticIDs> diagnosticIDs(new clang::DiagnosticIDs());
 
-    std::vector<const char *> clangArgs;
-    clangArgs.push_back(clangPath.c_str());
-    clangArgs.push_back(OUTPUT_PATH);
+    // Init llvm
+    llvm::InitializeAllTargets();
+    llvm::InitializeAllTargetMCs();
+    llvm::InitializeAllAsmPrinters();
+    llvm::InitializeAllAsmParsers();
+
+    // Arguments for Clang
+    clang::SmallVector<const char *, 256> clangArgs;
+
+    std::string outputPath(OUTPUT_PATH);
+
     clangArgs.push_back("-std=c++11");
     clangArgs.push_back("-x");
     clangArgs.push_back("c++");
-    clangArgs.push_back("-v");
+    clangArgs.push_back("-cc1");
 
-    llvm::IntrusiveRefCntPtr<clang::DiagnosticIDs> refPtr( new clang::DiagnosticIDs() );
-    clang::DiagnosticOptions options = clang::DiagnosticOptions();
-    clang::DiagnosticsEngine engine(refPtr, & options);
-    clang::driver::Driver driver(clangArgs[0], llvm::sys::getDefaultTargetTriple(), OUT_FILE, engine);
+    // Input file
+    clangArgs.push_back(OUTPUT_PATH);
 
-    // Create a compiler
-    clang::driver::Compilation * compilation = driver.BuildCompilation(clangArgs);
-    llvm::SmallVector<std::pair<int, const clang::driver::Command *>, 0> failures;
-    driver.ExecuteCompilation(*compilation, failures);
+    // Create a compilation object
+    clang::IntrusiveRefCntPtr<clang::DiagnosticOptions> diagnosticOptions = new clang::DiagnosticOptions();
+    clang::TextDiagnosticBuffer * diagnosticBuffer = new clang::TextDiagnosticBuffer();
+    clang::DiagnosticsEngine diagnosticsEngine(diagnosticIDs, &*diagnosticOptions, diagnosticBuffer);
+    bool success = clang::CompilerInvocation::CreateFromArgs(
+        compiler->getInvocation(), clangArgs.begin(), clangArgs.end(), diagnosticsEngine);
 
+    compiler->createDiagnostics();
+    if (not compiler->hasDiagnostics()) {
+        fprintf(stderr, "Could not create diagnostics.\n");
+        return -1;
+    }
+
+    llvm::install_fatal_error_handler(LLVMErrorHandler, static_cast<void*>(&compiler->getDiagnostics()));
+    diagnosticBuffer->FlushDiagnostics(compiler->getDiagnostics());
+    if (not success) {
+        fprintf(stderr, "Could not create a compiler's invocation\n");
+        return -1;
+    }
+
+    // Execute the compilation.
+    success = clang::ExecuteCompilerInvocation(compiler.get());
+
+    // Stop all the timers.
+    llvm::TimerGroup::printAll(llvm::errs());
+    llvm::remove_fatal_error_handler();
+
+    // Shutdown LLVM
+    llvm::llvm_shutdown();
+
+    if (not success) {
+        fprintf(stderr, "Compilation failed\n");
+    }
+#else
     program.emit(dynamic_cast<std::ostream &>(output));
-
+#endif
     return 0;
 }
 

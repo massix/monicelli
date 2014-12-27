@@ -55,7 +55,41 @@ elseif(BISON_VERSION VERSION_LESS 3.0)
     message("== Bison 2.5 was found. You have to apply cmake/bison2.patch...")
 endif()
 
-## 3. Build
+## 3. Optionally find llvm-config
+find_program(LLVM_CONFIG llvm-config-3.4 llvm-config-3.5 llvm-config)
+
+if (LLVM_CONFIG)
+    execute_process(COMMAND ${LLVM_CONFIG} --version
+                    OUTPUT_VARIABLE LLVM_VERSION ERROR_QUIET
+                    OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+    execute_process(COMMAND ${LLVM_CONFIG} --cppflags
+                    OUTPUT_VARIABLE LLVM_CXX_FLAGS ERROR_QUIET
+                    OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+    execute_process(COMMAND ${LLVM_CONFIG} --ldflags
+                    OUTPUT_VARIABLE LLVM_LINKER_FLAGS ERROR_QUIET
+                    OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+    execute_process(COMMAND ${LLVM_CONFIG} --libs all
+                    OUTPUT_VARIABLE LLVM_LIBRARIES ERROR_QUIET
+                    OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+    message("== LLVM Config ${LLVM_VERSION} found at ${LLVM_CONFIG}")
+    ## message("== Adding ${LLVM_CXX_FLAGS} to compiler's arguments")
+    ## message("== Adding ${LLVM_LINKER_FLAGS} ${LLVM_LIBRARIES} to linker's arguments")
+    add_definitions(-DLLVM_ENABLED)
+
+    ## Fastest and dirtiest way to do it.
+    ## TODO: Write a FindLLVM.cmake
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${LLVM_CXX_FLAGS}")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${LLVM_LINKER_FLAGS} ${LLVM_LIBRARIES}")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lclang -lclangAnalysis -lclangEdit -lclangAST -lclangDriver -lclangIndex -lclangParse -lclangLex -lclangBasic -lclangFrontend -lclangFrontendTool -lclangSerialization -lclangCodeGen -lclangSema -lclangRewriteFrontend -lclangRewriteCore -lclangFormat -lclangARCMigrate -lclangStaticAnalyzerCheckers -lclangStaticAnalyzerFrontend -lclangStaticAnalyzerCore")
+else()
+    message("== LLVM Config not found")
+endif()
+
+## 4. Build
 
 include_directories(
     ${CMAKE_CURRENT_BINARY_DIR}
@@ -70,6 +104,6 @@ add_flex_bison_dependency(Scanner Parser)
 
 add_executable(
     mcc
-    main.cpp Nodes.cpp ${BISON_Parser_OUTPUTS} ${FLEX_Scanner_OUTPUTS}
+    main.cpp ProgramOptions.cpp Nodes.cpp ${BISON_Parser_OUTPUTS} ${FLEX_Scanner_OUTPUTS}
 )
 

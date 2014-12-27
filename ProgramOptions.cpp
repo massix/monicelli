@@ -42,7 +42,11 @@ ProgramOptions::getValueAsInt(std::string const & key) const throw (OptionNotFou
         }
     }
 
+#ifdef LLVM_ENABLED
+    return 0;
+#else
     throw OptionNotFoundException("Option does not exist.");
+#endif
 }
 
 std::string const &
@@ -54,7 +58,11 @@ ProgramOptions::getValueAsString(std::string const & key) const throw (OptionNot
         }
     }
 
+#ifdef LLVM_ENABLED
+    return "";
+#else
     throw OptionNotFoundException("Option does not exist.");
+#endif
 }
 
 bool
